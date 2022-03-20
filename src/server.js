@@ -20,4 +20,10 @@ const handleListen = () =>
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+// 여기서의 socket은 연결된 브라우저를 뜻함
+function handleConnection(socket) {
+  console.log(socket);
+}
+wss.on("connection", handleConnection);
+
 server.listen(3000, handleListen);
