@@ -1,3 +1,4 @@
+// Back-End 부분
 import express from "express";
 import http from "http";
 import WebSocket, { WebSocketServer } from "ws";
@@ -20,10 +21,35 @@ const handleListen = () =>
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// 여기서의 socket은 연결된 브라우저를 뜻함
-function handleConnection(socket) {
-  console.log(socket);
+// function handleConnection(socket) {
+//   console.log(socket);
+// }
+
+// 아래 주석처리가 된 코드는 익명함수를 사용한 것이고
+// 주석처리가 안된 현재 코드는 익명함수를 사용하지 않고 따로 function을 만들어 사용한 것이다.
+
+function onSocketClose() {
+  console.log("Disconnected from Browser ❌");
 }
-wss.on("connection", handleConnection);
+function onSocketMessage(message) {
+  console.log(message.toString("utf8"));
+}
+// 여기서의 socket은 연결된 브라우저를 뜻함
+wss.on("connection", (socket) => {
+  console.log("Connected to Browser ✅");
+  // browser를 닫으면 close 이벤트 발생
+  socket.on("close", onSocketClose);
+  // socket.on("close", () => {
+  //   console.log("Disconnected from Browser ❌");
+  // });
+  socket.on("message", onSocketMessage);
+  // socket.on("message", (message) => {
+  //   console.log(message.toString("utf8"));
+  // });
+
+  // send메서드는 서버에 있는게 아닌 socket에 있는 메서드이다
+  // socket으로 data를 보내는 것이다.
+  socket.send("hello!!!");
+});
 
 server.listen(3000, handleListen);
