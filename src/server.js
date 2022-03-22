@@ -31,18 +31,25 @@ const wss = new WebSocketServer({ server });
 function onSocketClose() {
   console.log("Disconnected from Browser ❌");
 }
-function onSocketMessage(message) {
-  console.log(message.toString("utf8"));
-}
+// function onSocketMessage(message) {
+//   console.log(message.toString("utf8"));
+// }
+// 연결된 브라우저를 저장해둠
+const sockets = [];
+
 // 여기서의 socket은 연결된 브라우저를 뜻함
 wss.on("connection", (socket) => {
+  sockets.push(socket);
   console.log("Connected to Browser ✅");
   // browser를 닫으면 close 이벤트 발생
   socket.on("close", onSocketClose);
   // socket.on("close", () => {
   //   console.log("Disconnected from Browser ❌");
   // });
-  socket.on("message", onSocketMessage);
+  // 연결된 모든 브라우저에 메세지 전송
+  socket.on("message", (message) => {
+    sockets.forEach((aSocket) => aSocket.send(message.toString("utf8")));
+  });
   // socket.on("message", (message) => {
   //   console.log(message.toString("utf8"));
   // });
