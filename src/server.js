@@ -40,6 +40,7 @@ const sockets = [];
 // 여기서의 socket은 연결된 브라우저를 뜻함
 wss.on("connection", (socket) => {
   sockets.push(socket);
+  socket["nickname"] = "알수없음";
   console.log("Connected to Browser ✅");
   // browser를 닫으면 close 이벤트 발생
   socket.on("close", onSocketClose);
@@ -47,8 +48,22 @@ wss.on("connection", (socket) => {
   //   console.log("Disconnected from Browser ❌");
   // });
   // 연결된 모든 브라우저에 메세지 전송
-  socket.on("message", (message) => {
-    sockets.forEach((aSocket) => aSocket.send(message.toString("utf8")));
+  socket.on("message", (msg) => {
+    const message = JSON.parse(msg);
+    // switch문과 if~else문 두가지 방법으로 가능
+    switch (message.type) {
+      case "new_message":
+        sockets.forEach((aSocket) =>
+          aSocket.send(`${socket.nickname}: ${message.payload}`)
+        );
+      case "nickname":
+        socket["nickname"] = message.payload;
+    }
+    // if (parsed.type === "new_message") {
+    //   sockets.forEach((aSocket) => aSocket.send(parsed.payload));
+    // } else if (parsed.type === "nickname") {
+    //   console.log(parsed.payload);
+    // }
   });
   // socket.on("message", (message) => {
   //   console.log(message.toString("utf8"));
@@ -56,7 +71,7 @@ wss.on("connection", (socket) => {
 
   // send메서드는 서버에 있는게 아닌 socket에 있는 메서드이다
   // socket으로 data를 보내는 것이다.
-  socket.send("hello!!!");
+  // socket.send("hello!!!");
 });
 
 server.listen(3000, handleListen);
