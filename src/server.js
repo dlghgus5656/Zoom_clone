@@ -26,11 +26,19 @@ const wsServer = new Server(httpServer);
 
 // 프론트에서 백으로 연결
 wsServer.on("connection", (socket) => {
-  socket.on("enter_room", (msg, done) => {
-    console.log(msg);
-    setTimeout(() => {
-      done();
-    }, 10000);
+  socket.onAny((event) => {
+    console.log(`Socket Event: ${event}`);
+  });
+  socket.on("enter_room", (roomName, done) => {
+    // console.log(socket.id);
+    // console.log(socket.rooms);
+    socket.join(roomName);
+    done();
+    socket.to(roomName).emit("welcome");
+    // console.log(socket.rooms);
+    // setTimeout(() => {
+    //   done("hello from the backend");
+    // }, 10000);
   });
 });
 
