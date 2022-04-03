@@ -16,11 +16,32 @@ function addMessage(message) {
   ul.appendChild(li);
 }
 
+function handleMessageSubmit(event) {
+  event.preventDefault();
+  const input = room.querySelector("#msg input");
+  const value = input.value;
+  // 백엔드로 new_message라는 이벤트를 보냄 첫 번째 argument input.value와 두 번째론 백엔드에서 시작시킬 수 있는 function을 넣어서 보냄
+  socket.emit("new_message", input.value, roomName, () => {
+    addMessage(`You: ${value}`);
+  });
+  input.value = "";
+}
+
+function handleNicknameSubmit(event) {
+  event.preventDefault();
+  const input = room.querySelector("#name input");
+  socket.emit("nickname", input.value);
+}
+
 function showRoom() {
   welcome.hidden = true;
   room.hidden = false;
   const h3 = room.querySelector("h3");
   h3.innerText = `Room ${roomName}`;
+  const msgForm = room.querySelector("#msg");
+  const nameForm = room.querySelector("#name");
+  msgForm.addEventListener("submit", handleMessageSubmit);
+  nameForm.addEventListener("submit", handleNicknameSubmit);
 }
 
 // socketIO는 WebSocket처럼 오브젝트를 스트링으로 변환하는 등에 작업을 해줄 필요 없다.
@@ -36,10 +57,33 @@ function handleRoomSubmit(event) {
 
 form.addEventListener("submit", handleRoomSubmit);
 
-socket.on("welcome", () => {
-  addMessage("누군가 방에 참가하였습니다!");
+socket.on("welcome", (user, newCount) => {
+  const h3 = room.querySelector("h3");
+  h3.innerText = `Room ${roomName} (${newCount})`;
+  addMessage(`${user} 이 방에 참가하였습니다!`);
 });
 
+socket.on("bye", (left, newCount) => {
+  const h3 = room.querySelector("h3");
+  h3.innerText = `Room ${roomName} (${newCount})`;
+  addMessage(`${left} 이 퇴장하였습니다ㅠㅠ`);
+});
+// addMessage만 쓰는것이 socket.on("new_message", (msg) => {addMessage(msg)}); 와 같다.
+socket.on("new_message", addMessage);
+
+//방 목록
+socket.on("room_change", (rooms) => {
+  const roomList = welcome.querySelector("ul");
+  roomList.innerHTML = "";
+  if (rooms.length === 0) {
+    return;
+  }
+  rooms.forEach((room) => {
+    const li = document.createElement("li");
+    li.innerText = room;
+    roomList.append(li);
+  });
+});
 // webSocket로 한 부분
 // // 여기서의 socket는 서버로의 연결을 뜻함
 // const messageList = document.querySelector("ul");

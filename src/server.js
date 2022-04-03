@@ -3,6 +3,7 @@ import express from "express";
 import http from "http";
 // import WebSocket, { WebSocketServer } from "ws";
 import { Server, Socket } from "socket.io";
+import { instrument } from "@socket.io/admin-ui";
 
 const app = express();
 
@@ -22,10 +23,47 @@ const handleListen = () => console.log(`Listening on http://localhost:3000`);
 // const wss = new WebSocketServer({ server });
 
 const httpServer = http.createServer(app);
-const wsServer = new Server(httpServer);
+const wsServer = new Server(httpServer, {
+  cors: {
+    //아래 url은 데모용 url이므로 실제 사용할땐 서버url을 넣어주면 된다.
+    origin: ["https://admin.socket.io"],
+    credentials: true,
+  },
+});
+// 아래 부분에서 패스워드도 설정해줄 수 있다.
+instrument(wsServer, {
+  auth: false,
+});
+
+function publicRooms() {
+  //const { rooms, sids } = wsServer.sockets.adapter;
+  //위 코드 처럼도 쓸 수 있고
+  // const sids = wsServer.sockets.adapter.sids;
+  // const rooms = wsServer.sockets.adapter.rooms;
+  // 위 두줄의 코드를 아래처럼 한줄로 바꿀 수 있다.
+  // const {sockets: {adapter: { sids, rooms },},} = wsServer;}
+  const {
+    sockets: {
+      adapter: { sids, rooms },
+    },
+  } = wsServer;
+  const publicRooms = [];
+  rooms.forEach((_, key) => {
+    // sids에서 키를 가져와 그 값이 undefined면 publicRooms이므로 방 이름인 key값을 push해준다.
+    if (sids.get(key) === undefined) {
+      publicRooms.push(key);
+    }
+  });
+  return publicRooms;
+}
+// 방안에 사용자 수 나타내기
+function countRoom(roomName) {
+  return wsServer.sockets.adapter.rooms.get(roomName)?.size;
+}
 
 // 프론트에서 백으로 연결
 wsServer.on("connection", (socket) => {
+  socket["nickname"] = "알수없음";
   socket.onAny((event) => {
     console.log(`Socket Event: ${event}`);
   });
@@ -34,12 +72,29 @@ wsServer.on("connection", (socket) => {
     // console.log(socket.rooms);
     socket.join(roomName);
     done();
-    socket.to(roomName).emit("welcome");
+    socket.to(roomName).emit("welcome", socket.nickname, countRoom(roomName));
+    wsServer.sockets.emit("room_change", publicRooms());
     // console.log(socket.rooms);
     // setTimeout(() => {
     //   done("hello from the backend");
     // }, 10000);
   });
+  // 방에서 나갈때 방에있는 모든 사람에게 퇴장 인사 보내기
+  socket.on("disconnecting", () => {
+    socket.rooms.forEach((room) =>
+      socket.to(room).emit("bye", socket.nickname, countRoom(room) - 1)
+    );
+  });
+  socket.on("disconnect", () => {
+    wsServer.sockets.emit("room_change", publicRooms());
+  });
+
+  // argument중 세 번째 done은 백엔드에서 실행시키는 것이 아니라 백에서 done를 호출하면 프론트에서 실행시킨다.
+  socket.on("new_message", (msg, room, done) => {
+    socket.to(room).emit("new_message", `${socket.nickname}: ${msg}`);
+    done();
+  });
+  socket.on("nickname", (nickname) => (socket["nickname"] = nickname));
 });
 
 // function handleConnection(socket) {
