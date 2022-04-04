@@ -1,6 +1,49 @@
 // // Front-End 부분
 const socket = io(); // 프론트에서 백으로 연결
 
+const myFace = document.getElementById("myFace");
+let myStream;
+const muteBtn = document.getElementById("mute");
+const cameraBtn = document.getElementById("camera");
+let muted = false;
+let cameraOff = false;
+
+async function getMedia() {
+  try {
+    myStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: true,
+    });
+    myFace.srcObject = myStream;
+  } catch (e) {
+    //에러가 생기면 에러를 출력한다.
+    console.log(e);
+  }
+}
+getMedia();
+
+function handleMuteClick() {
+  if (!muted) {
+    muteBtn.innerText = "소리 키기";
+    muted = true;
+  } else {
+    muteBtn.innerText = "음소거";
+    muted = false;
+  }
+}
+function handleCameraClick() {
+  if (cameraOff) {
+    cameraBtn.innerText = "카메라 끄기";
+    cameraOff = false;
+  } else {
+    cameraBtn.innerText = "카메라 켜기";
+    cameraOff = true;
+  }
+}
+
+muteBtn.addEventListener("click", handleMuteClick);
+cameraBtn.addEventListener("click", handleCameraClick);
+
 const welcome = document.getElementById("welcome");
 const form = welcome.querySelector("form");
 

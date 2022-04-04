@@ -26,6 +26,14 @@ html(lang="en")
                 form#msg
                     input(placeholder="message", required, type="text")
                     button Send
+            //- playsinline를 사용하면 모바일 환경에서 영상이 전체화면으로 변하는것을 막아준다.
+            div#myStream    
+                video#myFace(autoplay, playsinline, width="400", height="400")
+                button#mute 음소거
+                button#camera 카메라 끄기
+            
+            
+            
             //- webSocket로 한 부분
             //- form#name
             //-     input(type="text", placeholder="Choose a nickname", required)
