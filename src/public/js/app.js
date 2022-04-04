@@ -2,27 +2,75 @@
 const socket = io(); // 프론트에서 백으로 연결
 
 const myFace = document.getElementById("myFace");
-let myStream;
+
 const muteBtn = document.getElementById("mute");
 const cameraBtn = document.getElementById("camera");
+
+const camerasSelect = document.getElementById("cameras");
+
+const call = document.getElementById("call");
+
+call.hidden = true;
+
+let myStream;
 let muted = false;
 let cameraOff = false;
+let roomName;
+let myPeerConnection;
 
-async function getMedia() {
+// 연결된 장비의 이름을 보여주고 옵션을 줘 선택할 수 있게한다.
+async function getCameras() {
   try {
-    myStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: true,
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter((device) => device.kind === "videoinput");
+    const currentCamera = myStream.getVideoTracks()[0];
+    cameras.forEach((camera) => {
+      const option = document.createElement("option");
+      option.value = camera.deviceId;
+      option.innerText = camera.label;
+      if (currentCamera.label == camera.label) {
+        option.selected = true;
+      }
+      camerasSelect.appendChild(option);
     });
+  } catch (e) {
+    console.log(e);
+  }
+}
+
+async function getMedia(deviceId) {
+  // deviceID가 없을 때 실행 됨
+  const initialConstraints = {
+    audio: true,
+    video: { facingMode: "user" },
+  };
+  // deviceID가 있을 때 실행 됨
+  const cameraConstraints = {
+    audio: true,
+    video: { deviceId: { exact: deviceId } },
+  };
+  try {
+    myStream = await navigator.mediaDevices.getUserMedia(
+      // deviceID가 있을 때 처음 cameraConstraints 실행 없을 때 뒤에 initialConstraints 실행
+      deviceId ? cameraConstraints : initialConstraints
+    );
     myFace.srcObject = myStream;
+    if (!deviceId) {
+      await getCameras();
+    }
   } catch (e) {
     //에러가 생기면 에러를 출력한다.
     console.log(e);
   }
 }
-getMedia();
+// getMedia();
 
 function handleMuteClick() {
+  // 실제 끄고 키는 기능
+  myStream
+    .getAudioTracks()
+    .forEach((track) => (track.enabled = !track.enabled));
+
   if (!muted) {
     muteBtn.innerText = "소리 키기";
     muted = true;
@@ -32,6 +80,10 @@ function handleMuteClick() {
   }
 }
 function handleCameraClick() {
+  myStream
+    .getVideoTracks()
+    .forEach((track) => (track.enabled = !track.enabled));
+
   if (cameraOff) {
     cameraBtn.innerText = "카메라 끄기";
     cameraOff = false;
@@ -41,92 +93,150 @@ function handleCameraClick() {
   }
 }
 
+async function handelCameraChange() {
+  await getMedia(camerasSelect.value);
+}
+
 muteBtn.addEventListener("click", handleMuteClick);
 cameraBtn.addEventListener("click", handleCameraClick);
+camerasSelect.addEventListener("input", handelCameraChange);
 
+// Welcome Form (join a room)
 const welcome = document.getElementById("welcome");
-const form = welcome.querySelector("form");
+const welcomeForm = welcome.querySelector("form");
 
-const room = document.getElementById("room");
-room.hidden = true;
-
-let roomName;
-
-function addMessage(message) {
-  const ul = room.querySelector("ul");
-  const li = document.createElement("li");
-  li.innerText = message;
-  ul.appendChild(li);
-}
-
-function handleMessageSubmit(event) {
-  event.preventDefault();
-  const input = room.querySelector("#msg input");
-  const value = input.value;
-  // 백엔드로 new_message라는 이벤트를 보냄 첫 번째 argument input.value와 두 번째론 백엔드에서 시작시킬 수 있는 function을 넣어서 보냄
-  socket.emit("new_message", input.value, roomName, () => {
-    addMessage(`You: ${value}`);
-  });
-  input.value = "";
-}
-
-function handleNicknameSubmit(event) {
-  event.preventDefault();
-  const input = room.querySelector("#name input");
-  socket.emit("nickname", input.value);
-}
-
-function showRoom() {
+async function startMedia() {
   welcome.hidden = true;
-  room.hidden = false;
-  const h3 = room.querySelector("h3");
-  h3.innerText = `Room ${roomName}`;
-  const msgForm = room.querySelector("#msg");
-  const nameForm = room.querySelector("#name");
-  msgForm.addEventListener("submit", handleMessageSubmit);
-  nameForm.addEventListener("submit", handleNicknameSubmit);
+  call.hidden = false;
+  await getMedia();
+  makeConnection();
 }
 
-// socketIO는 WebSocket처럼 오브젝트를 스트링으로 변환하는 등에 작업을 해줄 필요 없다.
-function handleRoomSubmit(event) {
-  event.preventDefault(); // 이벤트 고유기능 새로고침 등 막기
-  const input = form.querySelector("input");
-  socket.emit("enter_room", input.value, showRoom);
+function handleWelcomeSubmit(event) {
+  event.preventDefault();
+  const input = welcomeForm.querySelector("input");
+  socket.emit("join_room", input.value, startMedia);
   roomName = input.value;
-  //서버에서 done function을 실행 시키지만 실행 되는건 여기 프론트단에 있는 function이 실행 된다.
-  // socketIO 1. 특정한 event를 emit해 줄 수 있다. 이름 상관없이, 2. object를 전송할 수 있다.(string만 전송 할 필요 없음)
   input.value = "";
 }
 
-form.addEventListener("submit", handleRoomSubmit);
+welcomeForm.addEventListener("submit", handleWelcomeSubmit);
 
-socket.on("welcome", (user, newCount) => {
-  const h3 = room.querySelector("h3");
-  h3.innerText = `Room ${roomName} (${newCount})`;
-  addMessage(`${user} 이 방에 참가하였습니다!`);
+// Socket Code
+// Signaling process: 서버에 브라우저 정보(offer)를 주고 그 정보로 브라우저는 서버를 필요로 하지 않는 peer to peer 연결이 가능해진다.
+socket.on("welcome", async () => {
+  const offer = await myPeerConnection.createOffer();
+  //offer(초대장 개념) peer A가 생성 후 peer B에게 전달
+  myPeerConnection.setLocalDescription(offer);
+  console.log("offer 생성");
+  socket.emit("offer", offer, roomName);
+});
+//peer B 에서 실행 될 코드
+socket.on("offer", (offer) => {
+  console.log(offer);
 });
 
-socket.on("bye", (left, newCount) => {
-  const h3 = room.querySelector("h3");
-  h3.innerText = `Room ${roomName} (${newCount})`;
-  addMessage(`${left} 이 퇴장하였습니다ㅠㅠ`);
-});
-// addMessage만 쓰는것이 socket.on("new_message", (msg) => {addMessage(msg)}); 와 같다.
-socket.on("new_message", addMessage);
+// RTC Code
+function makeConnection() {
+  myPeerConnection = new RTCPeerConnection();
+  myStream
+    .getTracks()
+    .forEach((track) => myPeerConnection.addTrack(track, myStream));
+}
 
-//방 목록
-socket.on("room_change", (rooms) => {
-  const roomList = welcome.querySelector("ul");
-  roomList.innerHTML = "";
-  if (rooms.length === 0) {
-    return;
-  }
-  rooms.forEach((room) => {
-    const li = document.createElement("li");
-    li.innerText = room;
-    roomList.append(li);
-  });
-});
+//
+//
+//
+//
+//
+
+//socketIO로 한 부분
+// const room = document.getElementById("room");
+// room.hidden = true;
+
+// let roomName;
+
+// function addMessage(message) {
+//   const ul = room.querySelector("ul");
+//   const li = document.createElement("li");
+//   li.innerText = message;
+//   ul.appendChild(li);
+// }
+
+// function handleMessageSubmit(event) {
+//   event.preventDefault();
+//   const input = room.querySelector("#msg input");
+//   const value = input.value;
+//   // 백엔드로 new_message라는 이벤트를 보냄 첫 번째 argument input.value와 두 번째론 백엔드에서 시작시킬 수 있는 function을 넣어서 보냄
+//   socket.emit("new_message", input.value, roomName, () => {
+//     addMessage(`You: ${value}`);
+//   });
+//   input.value = "";
+// }
+
+// function handleNicknameSubmit(event) {
+//   event.preventDefault();
+//   const input = room.querySelector("#name input");
+//   socket.emit("nickname", input.value);
+// }
+
+// function showRoom() {
+//   welcome.hidden = true;
+//   room.hidden = false;
+//   const h3 = room.querySelector("h3");
+//   h3.innerText = `Room ${roomName}`;
+//   const msgForm = room.querySelector("#msg");
+//   const nameForm = room.querySelector("#name");
+//   msgForm.addEventListener("submit", handleMessageSubmit);
+//   nameForm.addEventListener("submit", handleNicknameSubmit);
+// }
+
+// // socketIO는 WebSocket처럼 오브젝트를 스트링으로 변환하는 등에 작업을 해줄 필요 없다.
+// function handleRoomSubmit(event) {
+//   event.preventDefault(); // 이벤트 고유기능 새로고침 등 막기
+//   const input = form.querySelector("input");
+//   socket.emit("enter_room", input.value, showRoom);
+//   roomName = input.value;
+//   //서버에서 done function을 실행 시키지만 실행 되는건 여기 프론트단에 있는 function이 실행 된다.
+//   // socketIO 1. 특정한 event를 emit해 줄 수 있다. 이름 상관없이, 2. object를 전송할 수 있다.(string만 전송 할 필요 없음)
+//   input.value = "";
+// }
+
+// form.addEventListener("submit", handleRoomSubmit);
+
+// socket.on("welcome", (user, newCount) => {
+//   const h3 = room.querySelector("h3");
+//   h3.innerText = `Room ${roomName} (${newCount})`;
+//   addMessage(`${user} 이 방에 참가하였습니다!`);
+// });
+
+// socket.on("bye", (left, newCount) => {
+//   const h3 = room.querySelector("h3");
+//   h3.innerText = `Room ${roomName} (${newCount})`;
+//   addMessage(`${left} 이 퇴장하였습니다ㅠㅠ`);
+// });
+// // addMessage만 쓰는것이 socket.on("new_message", (msg) => {addMessage(msg)}); 와 같다.
+// socket.on("new_message", addMessage);
+
+// //방 목록
+// socket.on("room_change", (rooms) => {
+//   const roomList = welcome.querySelector("ul");
+//   roomList.innerHTML = "";
+//   if (rooms.length === 0) {
+//     return;
+//   }
+//   rooms.forEach((room) => {
+//     const li = document.createElement("li");
+//     li.innerText = room;
+//     roomList.append(li);
+//   });
+// });
+//
+//
+//
+//
+//
+//
 // webSocket로 한 부분
 // // 여기서의 socket는 서버로의 연결을 뜻함
 // const messageList = document.querySelector("ul");
