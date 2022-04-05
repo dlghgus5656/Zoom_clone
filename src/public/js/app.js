@@ -17,6 +17,7 @@ let muted = false;
 let cameraOff = false;
 let roomName;
 let myPeerConnection;
+let myDataChannel;
 
 // 연결된 장비의 이름을 보여주고 옵션을 줘 선택할 수 있게한다.
 async function getCameras() {
@@ -95,6 +96,13 @@ function handleCameraClick() {
 
 async function handelCameraChange() {
   await getMedia(camerasSelect.value);
+  if (myPeerConnection) {
+    const videoTrack = myStream.getVideoTracks()[0];
+    const videoSender = myPeerConnection
+      .getSenders()
+      .find((sender) => sender.track.kind === "video");
+    videoSender.replaceTrack(videoTrack);
+  }
 }
 
 muteBtn.addEventListener("click", handleMuteClick);
@@ -127,6 +135,10 @@ welcomeForm.addEventListener("submit", handleWelcomeSubmit);
 // Signaling process: 서버에 브라우저 정보(offer)를 주고 그 정보로 브라우저는 서버를 필요로 하지 않는 peer to peer 연결이 가능해진다.
 // peer A 에서 돌아가는 코드
 socket.on("welcome", async () => {
+  // DataChannel 생성
+  myDataChannel = myPeerConnection.createDataChannel("chat");
+  myDataChannel.addEventListener("massage", (event) => console.log(event.data));
+  console.log("데이터 채널 생성");
   const offer = await myPeerConnection.createOffer();
   //offer(초대장 개념) peer A가 생성 후 peer B에게 전달
   myPeerConnection.setLocalDescription(offer);
@@ -135,6 +147,12 @@ socket.on("welcome", async () => {
 });
 //peer B 에서 돌아가는 코드
 socket.on("offer", async (offer) => {
+  myPeerConnection.addEventListener("datachannel", (event) => {
+    myDataChannel = event.channel;
+    myDataChannel.addEventListener("message", (event) =>
+      console.log(event.data)
+    );
+  });
   console.log("offer 수신");
   myPeerConnection.setRemoteDescription(offer);
   const answer = await myPeerConnection.createAnswer();
@@ -155,7 +173,19 @@ socket.on("ice", (ice) => {
 
 // webRTC Code
 function makeConnection() {
-  myPeerConnection = new RTCPeerConnection();
+  myPeerConnection = new RTCPeerConnection({
+    iceServers: [
+      {
+        urls: [
+          "stun:stun.l.google.com:19302",
+          "stun:stun1.l.google.com:19302",
+          "stun:stun2.l.google.com:19302",
+          "stun:stun3.l.google.com:19302",
+          "stun:stun4.l.google.com:19302",
+        ],
+      },
+    ],
+  });
   myPeerConnection.addEventListener("icecandidate", handleIce);
   myPeerConnection.addEventListener("addstream", handleAddStream);
   myStream
