@@ -105,17 +105,18 @@ camerasSelect.addEventListener("input", handelCameraChange);
 const welcome = document.getElementById("welcome");
 const welcomeForm = welcome.querySelector("form");
 
-async function startMedia() {
+async function initCall() {
   welcome.hidden = true;
   call.hidden = false;
   await getMedia();
   makeConnection();
 }
 
-function handleWelcomeSubmit(event) {
+async function handleWelcomeSubmit(event) {
   event.preventDefault();
   const input = welcomeForm.querySelector("input");
-  socket.emit("join_room", input.value, startMedia);
+  await initCall();
+  socket.emit("join_room", input.value);
   roomName = input.value;
   input.value = "";
 }
@@ -124,26 +125,54 @@ welcomeForm.addEventListener("submit", handleWelcomeSubmit);
 
 // Socket Code
 // Signaling process: 서버에 브라우저 정보(offer)를 주고 그 정보로 브라우저는 서버를 필요로 하지 않는 peer to peer 연결이 가능해진다.
+// peer A 에서 돌아가는 코드
 socket.on("welcome", async () => {
   const offer = await myPeerConnection.createOffer();
   //offer(초대장 개념) peer A가 생성 후 peer B에게 전달
   myPeerConnection.setLocalDescription(offer);
-  console.log("offer 생성");
+  console.log("offer 전송");
   socket.emit("offer", offer, roomName);
 });
-//peer B 에서 실행 될 코드
-socket.on("offer", (offer) => {
-  console.log(offer);
+//peer B 에서 돌아가는 코드
+socket.on("offer", async (offer) => {
+  console.log("offer 수신");
+  myPeerConnection.setRemoteDescription(offer);
+  const answer = await myPeerConnection.createAnswer();
+  myPeerConnection.setLocalDescription(answer);
+  socket.emit("answer", answer, roomName);
+  console.log("answer 전송");
 });
 
-// RTC Code
+socket.on("answer", (answer) => {
+  console.log("answer 수신됨");
+  myPeerConnection.setRemoteDescription(answer);
+});
+
+socket.on("ice", (ice) => {
+  console.log("candidate 수신됨");
+  myPeerConnection.addIceCandidate(ice);
+});
+
+// webRTC Code
 function makeConnection() {
   myPeerConnection = new RTCPeerConnection();
+  myPeerConnection.addEventListener("icecandidate", handleIce);
+  myPeerConnection.addEventListener("addstream", handleAddStream);
   myStream
     .getTracks()
     .forEach((track) => myPeerConnection.addTrack(track, myStream));
 }
 
+function handleIce(data) {
+  console.log("candidate 전송");
+  socket.emit("ice", data.candidate, roomName);
+}
+
+function handleAddStream(data) {
+  const peerFace = document.getElementById("peerFace");
+  // console.log("내 peer로 부터 이벤트를 받음");
+  peerFace.srcObject = data.stream;
+}
 //
 //
 //
