@@ -1,4 +1,4 @@
-// // Front-End 부분
+// Front-End 부분
 const socket = io(); // 프론트에서 백으로 연결
 
 const myFace = document.getElementById("myFace");
